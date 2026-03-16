@@ -12,11 +12,11 @@ try:
 except ImportError:
     HAS_REALSENSE = False
 
-from pycaas.drivers.base import CameraDriver, CameraInfo
+from pycaas.drivers.base import CameraDriver, CameraInfo, CameraIntrinsics
 
-STREAM_W = 640
-STREAM_H = 480
-FPS = 30
+DEFAULT_W = 640
+DEFAULT_H = 480
+DEFAULT_FPS = 30
 
 
 def colorize_depth(depth_frame: rs.depth_frame) -> np.ndarray:
@@ -34,19 +34,38 @@ class RealSenseDriver(CameraDriver):
         super().__init__(camera_info)
         self._pipeline: rs.pipeline | None = None
         self._align: rs.align | None = None
+        self._color_sensor: rs.sensor | None = None
 
     def open(self) -> None:
+        w, h = self.camera_info.resolution or (DEFAULT_W, DEFAULT_H)
+        fps = self.camera_info.fps or DEFAULT_FPS
         config = rs.config()
         config.enable_device(self.camera_info.serial)
-        config.enable_stream(rs.stream.color, STREAM_W, STREAM_H, rs.format.bgr8, FPS)
-        config.enable_stream(rs.stream.depth, STREAM_W, STREAM_H, rs.format.z16, FPS)
+        config.enable_stream(rs.stream.color, w, h, rs.format.rgb8, fps)
+        config.enable_stream(rs.stream.depth, w, h, rs.format.z16, fps)
 
         self._pipeline = rs.pipeline()
         self._pipeline.start(config)
 
-        # Let auto-exposure settle
-        for _ in range(30):
-            self._pipeline.wait_for_frames()
+        # Set exposure
+        profile = self._pipeline.get_active_profile()
+        color_sensor = None
+        for sensor in profile.get_device().query_sensors():
+            if sensor.get_info(rs.camera_info.name) == "RGB Camera":
+                color_sensor = sensor
+                break
+            # D405 has color on stereo module
+            if sensor.supports(rs.option.exposure):
+                color_sensor = sensor
+
+        self._color_sensor = color_sensor
+        if self.camera_info.exposure is not None and color_sensor is not None:
+            color_sensor.set_option(rs.option.enable_auto_exposure, 0)
+            color_sensor.set_option(rs.option.exposure, self.camera_info.exposure)
+        else:
+            # Let auto-exposure settle
+            for _ in range(30):
+                self._pipeline.wait_for_frames()
 
         self._align = rs.align(rs.stream.color)
         self.camera_info.streams = ["color", "depth"]
@@ -62,8 +81,45 @@ class RealSenseDriver(CameraDriver):
             result["color"] = np.asanyarray(color_frame.get_data())
         depth_frame = aligned.get_depth_frame()
         if depth_frame:
-            result["depth"] = colorize_depth(depth_frame)
+            result["depth"] = np.asanyarray(depth_frame.get_data())  # uint16, millimeters
         return result
+
+    def get_intrinsics(self) -> CameraIntrinsics:
+        assert self._pipeline is not None
+        profile = self._pipeline.get_active_profile()
+        color_profile = profile.get_stream(rs.stream.color).as_video_stream_profile()
+        intr = color_profile.get_intrinsics()
+        return CameraIntrinsics(
+            fx=intr.fx,
+            fy=intr.fy,
+            cx=intr.ppx,
+            cy=intr.ppy,
+            width=intr.width,
+            height=intr.height,
+            dist_coeffs=list(intr.coeffs),
+        )
+
+    def get_exposure(self) -> dict | None:
+        if self._color_sensor is None:
+            return None
+        auto = bool(self._color_sensor.get_option(rs.option.enable_auto_exposure))
+        value = int(self._color_sensor.get_option(rs.option.exposure))
+        return {"auto": auto, "value": value}
+
+    def set_exposure(self, value: int | None) -> None:
+        if self._color_sensor is None:
+            raise RuntimeError("Camera not opened or no color sensor found")
+        if value is None:
+            self._color_sensor.set_option(rs.option.enable_auto_exposure, 1)
+        else:
+            self._color_sensor.set_option(rs.option.enable_auto_exposure, 0)
+            self._color_sensor.set_option(rs.option.exposure, value)
+
+    def get_supported_modes(self) -> list[dict]:
+        from pycaas.discovery import query_realsense_resolutions
+
+        modes = query_realsense_resolutions(self.camera_info.serial)
+        return [{"width": w, "height": h, "fps": fps} for w, h, fps in modes]
 
     def close(self) -> None:
         if self._pipeline is not None:

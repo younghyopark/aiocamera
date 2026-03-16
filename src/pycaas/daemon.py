@@ -44,15 +44,21 @@ def is_service_running() -> bool:
     return False
 
 
-def start_daemon() -> int:
+def start_daemon(camera_configs: dict[str, dict] | None = None) -> int:
     """Fork a background process running the camera service.  Returns the PID."""
     if is_service_running():
         pid = _read_pid()
         raise RuntimeError(f"Service already running (PID {pid})")
 
+    cmd = [sys.executable, "-m", "pycaas.daemon"]
+    if camera_configs is not None:
+        import json
+        # e.g. {"rs0": {"resolution": [1280, 720], "fps": 15}, ...}
+        cmd += ["--camera-configs", json.dumps(camera_configs)]
+
     log_fd = open(LOG_FILE, "a")
     proc = subprocess.Popen(
-        [sys.executable, "-m", "pycaas.daemon"],
+        cmd,
         stdout=log_fd,
         stderr=log_fd,
         start_new_session=True,
@@ -90,6 +96,18 @@ def stop_daemon() -> None:
 # ── Entry point for the subprocess (`python -m pycaas.daemon`) ──────────────
 
 def _run() -> None:
+    import argparse
+    import json as json_mod
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--camera-configs", default=None,
+                        help='JSON dict e.g. \'{"rs0": {"resolution": [1280, 720], "fps": 15}}\'')
+    args = parser.parse_args()
+
+    camera_configs = None
+    if args.camera_configs:
+        camera_configs = json_mod.loads(args.camera_configs)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -97,7 +115,7 @@ def _run() -> None:
     log.info("pycaas daemon starting (PID %d)", os.getpid())
     from pycaas.service import CameraService
 
-    svc = CameraService()
+    svc = CameraService(camera_configs=camera_configs)
     svc.run()
     # Clean up PID file on graceful exit
     try:

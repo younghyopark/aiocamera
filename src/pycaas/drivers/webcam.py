@@ -17,8 +17,11 @@ class WebcamDriver(CameraDriver):
         # Accept both "/dev/videoN" strings and bare integers
         index = int(path.replace("/dev/video", "")) if path.startswith("/dev/video") else int(path)
         self._cap = cv2.VideoCapture(index, cv2.CAP_V4L2)
-        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        w, h = self.camera_info.resolution or (640, 480)
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+        if self.camera_info.fps is not None:
+            self._cap.set(cv2.CAP_PROP_FPS, self.camera_info.fps)
         if not self._cap.isOpened():
             raise RuntimeError(f"Cannot open webcam {path}")
         self.camera_info.streams = ["color"]
@@ -29,6 +32,15 @@ class WebcamDriver(CameraDriver):
         if not ok or frame is None:
             return {}
         return {"color": frame}
+
+    def set_exposure(self, value: int | None) -> None:
+        if self._cap is None:
+            raise RuntimeError("Camera not opened")
+        if value is None:
+            self._cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 3)  # auto
+        else:
+            self._cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)  # manual
+            self._cap.set(cv2.CAP_PROP_EXPOSURE, value)
 
     def close(self) -> None:
         if self._cap is not None:

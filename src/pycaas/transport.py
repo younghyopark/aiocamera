@@ -46,6 +46,11 @@ class ZmqServer:
         self.frame_store: dict[str, FrameData] = {}
         self.camera_meta: list[dict] = []  # set by service after discovery
         self._start_time = time.time()
+        self._handlers: dict[str, object] = {}  # cmd -> callable(request) -> dict
+
+    def register_handler(self, cmd: str, handler: object) -> None:
+        """Register a handler function for a custom command."""
+        self._handlers[cmd] = handler
 
     def poll_once(self, timeout_ms: int = 50) -> str | None:
         """Process one pending request (if any).  Returns the command name, or None."""
@@ -83,19 +88,31 @@ class ZmqServer:
                 )
 
         elif cmd == "status":
-            stream_ids = list(self.frame_store.keys())
+            stream_info = {
+                k: {"resolution": [fd.shape[1], fd.shape[0]]}
+                for k, fd in self.frame_store.items()
+            }
             self._socket.send_json(
                 {
                     "running": True,
                     "uptime": round(time.time() - self._start_time, 1),
                     "cameras": self.camera_meta,
-                    "active_streams": stream_ids,
+                    "active_streams": list(stream_info.keys()),
+                    "streams": stream_info,
                 }
             )
 
         elif cmd == "stop":
             self._socket.send_json({"ok": True})
             return "stop"
+
+        elif cmd in self._handlers:
+            try:
+                result = self._handlers[cmd](request)
+                self._socket.send_json(result)
+            except Exception as e:
+                log.exception("Handler error for %s", cmd)
+                self._socket.send_json({"error": str(e)})
 
         else:
             self._socket.send_json({"error": f"Unknown command: {cmd}"})
@@ -169,6 +186,71 @@ class PycaasClient:
         shape = tuple(meta["shape"])
         dtype = np.dtype(meta["dtype"])
         return np.frombuffer(parts[1], dtype=dtype).reshape(shape)
+
+    def get_exposure(self, camera_id: str) -> dict | None:
+        """Fetch current exposure setting: {"auto": bool, "value": int}."""
+        resp = self._send_cmd("get_exposure", camera_id=camera_id)
+        if "error" in resp:
+            return None
+        return resp.get("exposure")
+
+    def get_intrinsics(self, camera_id: str) -> dict:
+        """Fetch camera intrinsics as a dict."""
+        resp = self._send_cmd("get_intrinsics", camera_id=camera_id)
+        if "error" in resp:
+            raise RuntimeError(resp["error"])
+        return resp.get("intrinsics", {})
+
+    def get_intrinsics_matrix(self, camera_id: str) -> np.ndarray:
+        """Fetch camera intrinsics as a 3x3 numpy camera matrix."""
+        intr = self.get_intrinsics(camera_id)
+        return np.array(
+            [[intr["fx"], 0.0, intr["cx"]],
+             [0.0, intr["fy"], intr["cy"]],
+             [0.0, 0.0, 1.0]],
+            dtype=np.float64,
+        )
+
+    def set_exposure(self, camera_id: str, value: int | None = None) -> dict:
+        """Set exposure on a camera. None = auto exposure."""
+        return self._send_cmd("set_exposure", camera_id=camera_id, value=value)
+
+    def set_config(
+        self,
+        camera_id: str,
+        resolution: tuple[int, int] | None = None,
+        fps: int | None = None,
+        timeout_ms: int = 15000,
+    ) -> dict:
+        """Change resolution/fps at runtime (blocking — waits for pipeline restart).
+
+        Args:
+            camera_id: Camera identifier (e.g. "rs0").
+            resolution: Optional (width, height) to change to.
+            fps: Optional fps to change to.
+            timeout_ms: How long to wait for the reconfigure to complete.
+        """
+        kwargs: dict = {"camera_id": camera_id}
+        if resolution is not None:
+            kwargs["resolution"] = list(resolution)
+        if fps is not None:
+            kwargs["fps"] = fps
+
+        # Temporarily increase socket timeout for blocking reconfigure
+        old_timeout = self._socket.getsockopt(zmq.RCVTIMEO)
+        self._socket.setsockopt(zmq.RCVTIMEO, timeout_ms)
+        try:
+            return self._send_cmd("set_config", **kwargs)
+        finally:
+            self._socket.setsockopt(zmq.RCVTIMEO, old_timeout)
+
+    def get_supported_modes(self, camera_id: str) -> list[dict] | None:
+        """Get supported (width, height, fps) combos for a camera.
+
+        Returns None if the camera doesn't report supported modes.
+        """
+        resp = self._send_cmd("get_supported_modes", camera_id=camera_id)
+        return resp.get("modes")
 
     def status(self) -> dict:
         return self._send_cmd("status")

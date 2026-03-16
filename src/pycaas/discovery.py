@@ -26,7 +26,7 @@ def _discover_realsense() -> list[CameraInfo]:
         name = dev.get_info(rs.camera_info.name)
         cameras.append(
             CameraInfo(
-                id=f"rs{i}",
+                id=f"rs_{serial}",
                 type="realsense",
                 name=name,
                 serial=serial,
@@ -47,7 +47,7 @@ def _discover_oak() -> list[CameraInfo]:
         mx_id = dev_info.getMxId()
         cameras.append(
             CameraInfo(
-                id=f"oak{i}",
+                id=f"oak_{mx_id}",
                 type="oak",
                 name=f"OAK ({dev_info.name})" if dev_info.name else f"OAK-{i}",
                 serial=mx_id,
@@ -108,6 +108,60 @@ def _discover_webcams(exclude_names: set[str] | None = None) -> list[CameraInfo]
         log.info("Webcam: %s (%s)", dev_name or dev_path, dev_path)
 
     return cameras
+
+
+def query_realsense_exposure_range(serial: str, sensor_name: str = "RGB Camera") -> dict | None:
+    """Return {"min", "max", "step", "default"} for exposure on a RealSense sensor."""
+    try:
+        import pyrealsense2 as rs
+    except ImportError:
+        return None
+
+    ctx = rs.context()
+    for dev in ctx.query_devices():
+        if dev.get_info(rs.camera_info.serial_number) != serial:
+            continue
+        for sensor in dev.query_sensors():
+            sname = sensor.get_info(rs.camera_info.name)
+            if sensor_name.lower() not in sname.lower():
+                continue
+            if sensor.supports(rs.option.exposure):
+                r = sensor.get_option_range(rs.option.exposure)
+                return {"min": int(r.min), "max": int(r.max), "step": int(r.step), "default": int(r.default)}
+    return None
+
+
+def query_realsense_resolutions(serial: str) -> list[tuple[int, int, int]]:
+    """Return available (width, height, fps) combos supported by BOTH color and depth.
+
+    Only combos where both streams support the same (w, h, fps) are returned,
+    so ``pipeline.start()`` won't fail due to a depth/color mismatch.
+    """
+    try:
+        import pyrealsense2 as rs
+    except ImportError:
+        return []
+
+    ctx = rs.context()
+    for dev in ctx.query_devices():
+        if dev.get_info(rs.camera_info.serial_number) != serial:
+            continue
+
+        color_modes: set[tuple[int, int, int]] = set()
+        depth_modes: set[tuple[int, int, int]] = set()
+
+        for sensor in dev.query_sensors():
+            for profile in sensor.get_stream_profiles():
+                vp = profile.as_video_stream_profile()
+                entry = (vp.width(), vp.height(), vp.fps())
+                if vp.stream_type() == rs.stream.color:
+                    color_modes.add(entry)
+                elif vp.stream_type() == rs.stream.depth:
+                    depth_modes.add(entry)
+
+        valid = sorted(color_modes & depth_modes, key=lambda r: (r[2], r[0] * r[1]), reverse=True)
+        return valid
+    return []
 
 
 def discover_cameras() -> list[CameraInfo]:
