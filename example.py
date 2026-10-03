@@ -1,9 +1,9 @@
-"""Example: grab frames from the running pycaas service and save to disk."""
+"""Example: grab frames from the running aiocamera service and save to disk."""
 
 import cv2
-from pycaas import PycaasClient
+from aiocamera import CameraClient
 
-client = PycaasClient()
+client = CameraClient()
 
 # List available cameras
 cameras = client.list_cameras()

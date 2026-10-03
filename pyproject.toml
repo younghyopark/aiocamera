@@ -1,12 +1,14 @@
 [build-system]
-requires = ["setuptools>=68.0", "wheel"]
+requires = ["setuptools>=77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pycaas"
+name = "aiocamera"
 version = "0.1.0"
-description = "Python Camera as a Service — discover, capture, and serve camera frames over ZMQ"
+description = "Camera as a service — discover, capture, and serve camera frames over ZMQ"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{name = "Younghyo Park"}]
 classifiers = [
@@ -24,14 +26,14 @@ dependencies = [
 [project.optional-dependencies]
 realsense = ["pyrealsense2>=2.50"]
 oak = ["depthai>=2.24"]
-all = ["pycaas[realsense,oak]"]
+all = ["aiocamera[realsense,oak]"]
 
 [project.scripts]
-pycaas = "pycaas.cli:main"
+aiocamera = "aiocamera.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/younghyopark/pycaas"
-Repository = "https://github.com/younghyopark/pycaas"
+Homepage = "https://github.com/younghyopark/aiocamera"
+Repository = "https://github.com/younghyopark/aiocamera"
 
 [tool.setuptools.packages.find]
 where = ["src"]

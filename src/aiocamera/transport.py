@@ -13,7 +13,7 @@ import zmq
 
 log = logging.getLogger(__name__)
 
-IPC_ENDPOINT = "ipc:///tmp/pycaas.sock"
+IPC_ENDPOINT = "ipc:///tmp/aiocamera.sock"
 
 
 # ── Frame data container ────────────────────────────────────────────────────
@@ -126,8 +126,8 @@ class ZmqServer:
 # ── Client ───────────────────────────────────────────────────────────────────
 
 
-class PycaasClient:
-    """Lightweight ZMQ REQ client for talking to the pycaas service."""
+class CameraClient:
+    """Lightweight ZMQ REQ client for talking to the aiocamera service."""
 
     def __init__(self, endpoint: str = IPC_ENDPOINT, timeout_ms: int = 3000) -> None:
         self._ctx = zmq.Context.instance()
@@ -261,7 +261,7 @@ class PycaasClient:
     def close(self) -> None:
         self._socket.close(linger=0)
 
-    def __enter__(self) -> PycaasClient:
+    def __enter__(self) -> CameraClient:
         return self
 
     def __exit__(self, *_: object) -> None:

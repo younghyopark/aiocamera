@@ -8,10 +8,10 @@ import threading
 import time
 from dataclasses import dataclass, field
 
-from pycaas.discovery import discover_cameras
-from pycaas.drivers import create_driver
-from pycaas.drivers.base import CameraDriver
-from pycaas.transport import FrameData, ZmqServer
+from aiocamera.discovery import discover_cameras
+from aiocamera.drivers import create_driver
+from aiocamera.drivers.base import CameraDriver
+from aiocamera.transport import FrameData, ZmqServer
 
 log = logging.getLogger(__name__)
 

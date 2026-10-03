@@ -5,7 +5,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from pycaas.drivers.base import CameraDriver, CameraInfo
+from aiocamera.drivers.base import CameraDriver, CameraInfo
 
 class WebcamDriver(CameraDriver):
     def __init__(self, camera_info: CameraInfo) -> None:

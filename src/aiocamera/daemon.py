@@ -11,8 +11,8 @@ import time
 
 log = logging.getLogger(__name__)
 
-PID_FILE = "/tmp/pycaas.pid"
-LOG_FILE = "/tmp/pycaas.log"
+PID_FILE = "/tmp/aiocamera.pid"
+LOG_FILE = "/tmp/aiocamera.log"
 
 
 def _read_pid() -> int | None:
@@ -50,7 +50,7 @@ def start_daemon(camera_configs: dict[str, dict] | None = None) -> int:
         pid = _read_pid()
         raise RuntimeError(f"Service already running (PID {pid})")
 
-    cmd = [sys.executable, "-m", "pycaas.daemon"]
+    cmd = [sys.executable, "-m", "aiocamera.daemon"]
     if camera_configs is not None:
         import json
         # e.g. {"rs0": {"resolution": [1280, 720], "fps": 15}, ...}
@@ -93,7 +93,7 @@ def stop_daemon() -> None:
         pass
 
 
-# ── Entry point for the subprocess (`python -m pycaas.daemon`) ──────────────
+# ── Entry point for the subprocess (`python -m aiocamera.daemon`) ──────────────
 
 def _run() -> None:
     import argparse
@@ -112,8 +112,8 @@ def _run() -> None:
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     )
-    log.info("pycaas daemon starting (PID %d)", os.getpid())
-    from pycaas.service import CameraService
+    log.info("aiocamera daemon starting (PID %d)", os.getpid())
+    from aiocamera.service import CameraService
 
     svc = CameraService(camera_configs=camera_configs)
     svc.run()

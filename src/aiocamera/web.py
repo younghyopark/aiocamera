@@ -1,4 +1,4 @@
-"""MJPEG web debug server — connects to the running pycaas service and
+"""MJPEG web debug server — connects to the running aiocamera service and
 re-serves camera frames as browser-viewable MJPEG streams."""
 
 from __future__ import annotations
@@ -12,18 +12,18 @@ from urllib.parse import unquote
 
 import cv2
 
-from pycaas.transport import PycaasClient
+from aiocamera.transport import CameraClient
 
 # Thread-local client to avoid ZMQ socket sharing across threads
-_local_clients: dict[int, PycaasClient] = {}
+_local_clients: dict[int, CameraClient] = {}
 _lock = threading.Lock()
 
 
-def _get_client() -> PycaasClient:
+def _get_client() -> CameraClient:
     tid = threading.get_ident()
     with _lock:
         if tid not in _local_clients:
-            _local_clients[tid] = PycaasClient(timeout_ms=2000)
+            _local_clients[tid] = CameraClient(timeout_ms=2000)
         return _local_clients[tid]
 
 
@@ -50,7 +50,7 @@ class _MJPEGHandler(BaseHTTPRequestHandler):
         try:
             info = client.status()
         except Exception:
-            self.send_error(502, "Cannot reach pycaas service")
+            self.send_error(502, "Cannot reach aiocamera service")
             return
 
         streams = info.get("active_streams", [])
@@ -69,7 +69,7 @@ class _MJPEGHandler(BaseHTTPRequestHandler):
 
         html = (
             "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-            "<title>pycaas debug</title>"
+            "<title>aiocamera debug</title>"
             "<style>"
             "body{background:#111;color:#eee;font-family:sans-serif;text-align:center;margin:0;padding:20px}"
             ".grid{display:flex;flex-wrap:wrap;justify-content:center;gap:16px}"
@@ -78,7 +78,7 @@ class _MJPEGHandler(BaseHTTPRequestHandler):
             "img{max-width:640px;border-radius:4px}"
             "a{color:#4caf50}"
             "</style></head><body>"
-            "<h2>pycaas — live camera streams</h2>"
+            "<h2>aiocamera — live camera streams</h2>"
         )
         if has_calibration:
             html += "<p><a href='/markers'>3D Marker Tracking Viewer</a></p>"
@@ -147,7 +147,7 @@ class _MJPEGHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         html = """<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>pycaas - 3D Marker Tracking</title>
+<title>aiocamera - 3D Marker Tracking</title>
 <style>
 body{margin:0;background:#111;color:#eee;font-family:sans-serif}
 #info{position:absolute;top:10px;left:10px;z-index:10}

@@ -12,12 +12,12 @@ try:
 except ImportError:
     HAS_DEPTHAI = False
 
-from pycaas.drivers.base import CameraDriver, CameraInfo
+from aiocamera.drivers.base import CameraDriver, CameraInfo
 
 class OakDriver(CameraDriver):
     def __init__(self, camera_info: CameraInfo) -> None:
         if not HAS_DEPTHAI:
-            raise ImportError("depthai is required: pip install pycaas[oak]")
+            raise ImportError("depthai is required: pip install aiocamera[oak]")
         super().__init__(camera_info)
         self._device: dai.Device | None = None
         self._pipeline: dai.Pipeline | None = None

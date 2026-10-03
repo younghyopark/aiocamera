@@ -8,7 +8,7 @@ import os
 
 import cv2
 
-from pycaas.drivers.base import CameraInfo
+from aiocamera.drivers.base import CameraInfo
 
 log = logging.getLogger(__name__)
 

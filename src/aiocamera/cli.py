@@ -1,4 +1,4 @@
-"""CLI entry point: pycaas {start,stop,status,web-debug,config}."""
+"""CLI entry point: aiocamera {start,stop,status,web-debug,config}."""
 
 from __future__ import annotations
 
@@ -9,8 +9,10 @@ from pathlib import Path
 
 import click
 
-CONFIG_DIR = Path.home() / ".config" / "pycaas"
+CONFIG_DIR = Path.home() / ".config" / "aiocamera"
 CAMERA_CONFIG_FILE = CONFIG_DIR / "camera_configs.json"
+# Profiles saved under aiocamera's former name, pycaas, until a profile is saved here.
+PYCAAS_CONFIG_FILE = Path.home() / ".config" / "pycaas" / "camera_configs.json"
 
 
 # ── Profile storage ─────────────────────────────────────────────────────────
@@ -32,9 +34,10 @@ CAMERA_CONFIG_FILE = CONFIG_DIR / "camera_configs.json"
 
 def _load_profiles() -> dict[str, dict]:
     """Load all saved profiles. Returns {name: profile_dict}."""
-    if not CAMERA_CONFIG_FILE.exists():
+    path = CAMERA_CONFIG_FILE if CAMERA_CONFIG_FILE.exists() else PYCAAS_CONFIG_FILE
+    if not path.exists():
         return {}
-    data = json.loads(CAMERA_CONFIG_FILE.read_text())
+    data = json.loads(path.read_text())
     # Migrate old flat format (pre-profile)
     if "profiles" not in data:
         return {}
@@ -83,7 +86,7 @@ def _list_matching_profiles(
 
 @click.group()
 def main() -> None:
-    """pycaas — Python Camera as a Service."""
+    """aiocamera — camera as a service."""
 
 
 @main.command()
@@ -91,9 +94,9 @@ def main() -> None:
 @click.option("--profile", "profile_name", default=None, help="Use a specific saved profile by name.")
 def start(fresh: bool, profile_name: str | None) -> None:
     """Start the camera service in the background."""
-    import pycaas
+    import aiocamera
 
-    pid = pycaas.start(fresh=fresh, profile=profile_name)
+    pid = aiocamera.start(fresh=fresh, profile=profile_name)
     if pid is None:
         sys.exit(0)
 
@@ -101,15 +104,15 @@ def start(fresh: bool, profile_name: str | None) -> None:
 @main.command()
 def stop() -> None:
     """Stop the running camera service."""
-    import pycaas
+    import aiocamera
 
-    pycaas.stop()
+    aiocamera.stop()
 
 
 @main.command()
 def status() -> None:
     """Show status of the camera service."""
-    from pycaas.daemon import is_service_running
+    from aiocamera.daemon import is_service_running
 
     if not is_service_running():
         click.echo("Service is not running.")
@@ -122,13 +125,13 @@ def status() -> None:
 @click.argument("port", default=8080, type=int)
 def web_debug(port: int) -> None:
     """Launch a browser-viewable MJPEG debug server (blocks until Ctrl+C)."""
-    from pycaas.daemon import is_service_running
+    from aiocamera.daemon import is_service_running
 
     if not is_service_running():
-        click.echo("Error: service is not running. Run `pycaas start` first.", err=True)
+        click.echo("Error: service is not running. Run `aiocamera start` first.", err=True)
         sys.exit(1)
 
-    from pycaas.web import run_web_debug
+    from aiocamera.web import run_web_debug
 
     click.echo(f"Web debug server at http://localhost:{port}  (Ctrl+C to stop)")
     run_web_debug(port=port)
@@ -141,14 +144,14 @@ def web_debug(port: int) -> None:
 @click.option("--exposure", type=str, default=None, help="Exposure value or 'auto'")
 def config(camera_id: str, resolution: str | None, fps: int | None, exposure: str | None) -> None:
     """Change camera settings at runtime (while service is running)."""
-    from pycaas.daemon import is_service_running
-    from pycaas.transport import PycaasClient
+    from aiocamera.daemon import is_service_running
+    from aiocamera.transport import CameraClient
 
     if not is_service_running():
-        click.echo("Error: service is not running. Run `pycaas start` first.", err=True)
+        click.echo("Error: service is not running. Run `aiocamera start` first.", err=True)
         sys.exit(1)
 
-    client = PycaasClient()
+    client = CameraClient()
     try:
         # Handle exposure change (no restart needed)
         if exposure is not None:
@@ -214,10 +217,10 @@ def profiles() -> None:
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 def _print_status(quiet_fail: bool = False) -> None:
-    from pycaas.transport import PycaasClient
+    from aiocamera.transport import CameraClient
 
     try:
-        client = PycaasClient()
+        client = CameraClient()
         info = client.status()
     except Exception:
         if quiet_fail:

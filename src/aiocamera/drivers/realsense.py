@@ -12,7 +12,7 @@ try:
 except ImportError:
     HAS_REALSENSE = False
 
-from pycaas.drivers.base import CameraDriver, CameraInfo, CameraIntrinsics
+from aiocamera.drivers.base import CameraDriver, CameraInfo, CameraIntrinsics
 
 DEFAULT_W = 640
 DEFAULT_H = 480
@@ -30,7 +30,7 @@ def colorize_depth(depth_frame: rs.depth_frame) -> np.ndarray:
 class RealSenseDriver(CameraDriver):
     def __init__(self, camera_info: CameraInfo) -> None:
         if not HAS_REALSENSE:
-            raise ImportError("pyrealsense2 is required: pip install pycaas[realsense]")
+            raise ImportError("pyrealsense2 is required: pip install aiocamera[realsense]")
         super().__init__(camera_info)
         self._pipeline: rs.pipeline | None = None
         self._align: rs.align | None = None
@@ -116,7 +116,7 @@ class RealSenseDriver(CameraDriver):
             self._color_sensor.set_option(rs.option.exposure, value)
 
     def get_supported_modes(self) -> list[dict]:
-        from pycaas.discovery import query_realsense_resolutions
+        from aiocamera.discovery import query_realsense_resolutions
 
         modes = query_realsense_resolutions(self.camera_info.serial)
         return [{"width": w, "height": h, "fps": fps} for w, h, fps in modes]

@@ -1,4 +1,4 @@
-"""pycaas — Python Camera as a Service."""
+"""aiocamera — camera as a service."""
 
 from __future__ import annotations
 
@@ -6,18 +6,18 @@ __version__ = "0.1.0"
 
 import numpy as np
 
-from pycaas.transport import PycaasClient
+from aiocamera.transport import CameraClient
 
 # ── Lazy singleton client for module-level API ──────────────────────────────
 
-_client: PycaasClient | None = None
+_client: CameraClient | None = None
 
 
-def _get_client() -> PycaasClient:
+def _get_client() -> CameraClient:
     """Return (and lazily create) the module-level client singleton."""
     global _client
     if _client is None:
-        _client = PycaasClient()
+        _client = CameraClient()
     return _client
 
 
@@ -32,7 +32,7 @@ def connect(endpoint: str | None = None, timeout_ms: int = 3000) -> None:
     kwargs: dict = {"timeout_ms": timeout_ms}
     if endpoint is not None:
         kwargs["endpoint"] = endpoint
-    _client = PycaasClient(**kwargs)
+    _client = CameraClient(**kwargs)
 
 
 def disconnect() -> None:
@@ -117,25 +117,25 @@ def start(
     Returns:
         The daemon PID, or None if the service was already running.
     """
-    from pycaas.daemon import is_service_running, start_daemon
+    from aiocamera.daemon import is_service_running, start_daemon
 
     if is_service_running():
-        print("pycaas service is already running.")
+        print("aiocamera service is already running.")
         return None
 
     if camera_configs is None:
         camera_configs = _build_camera_configs(fresh=fresh, profile_name=profile)
 
     pid = start_daemon(camera_configs=camera_configs or None)
-    print(f"pycaas service started (PID {pid})")
-    print("Log: /tmp/pycaas.log")
+    print(f"aiocamera service started (PID {pid})")
+    print("Log: /tmp/aiocamera.log")
 
     # Wait for cameras to come online
     import time
     time.sleep(2)
 
     try:
-        with PycaasClient() as client:
+        with CameraClient() as client:
             info = client.status()
         streams = info.get("active_streams", [])
         cameras = info.get("cameras", [])
@@ -152,14 +152,14 @@ def start(
 
 def stop() -> None:
     """Stop the running camera service."""
-    from pycaas.daemon import is_service_running, stop_daemon
+    from aiocamera.daemon import is_service_running, stop_daemon
 
     if not is_service_running():
-        print("pycaas service is not running.")
+        print("aiocamera service is not running.")
         return
 
     stop_daemon()
-    print("pycaas service stopped.")
+    print("aiocamera service stopped.")
 
 
 def _build_camera_configs(
@@ -177,7 +177,7 @@ def _build_camera_configs(
     """
     from datetime import datetime
 
-    from pycaas.cli import (
+    from aiocamera.cli import (
         _find_matching_profile,
         _list_matching_profiles,
         _load_profiles,
@@ -186,7 +186,7 @@ def _build_camera_configs(
 
     camera_configs: dict[str, dict] = {}
     try:
-        from pycaas.discovery import (
+        from aiocamera.discovery import (
             _discover_realsense,
             query_realsense_exposure_range,
             query_realsense_resolutions,
@@ -356,7 +356,7 @@ def _build_camera_configs(
 
 
 __all__ = [
-    "PycaasClient",
+    "CameraClient",
     "connect",
     "disconnect",
     "get_exposure",
