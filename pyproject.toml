@@ -6,9 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "pycaas"
 version = "0.1.0"
 description = "Python Camera as a Service — discover, capture, and serve camera frames over ZMQ"
+readme = "README.md"
 requires-python = ">=3.10"
+authors = [{name = "Younghyo Park"}]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video :: Capture",
+]
 dependencies = [
-    "opencv-python>=4.8",
+    # The contrib build, as aprilcube uses: two OpenCV wheels in one environment both install cv2.
+    "opencv-contrib-python>=4.8,<5",
     "pyzmq>=25.0",
     "numpy>=1.24",
     "click>=8.0",
@@ -21,6 +28,10 @@ all = ["pycaas[realsense,oak]"]
 
 [project.scripts]
 pycaas = "pycaas.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/younghyopark/pycaas"
+Repository = "https://github.com/younghyopark/pycaas"
 
 [tool.setuptools.packages.find]
 where = ["src"]

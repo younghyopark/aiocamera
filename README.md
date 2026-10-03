@@ -7,11 +7,15 @@ A background daemon automatically detects connected cameras (Intel RealSense, Lu
 ## Install
 
 ```bash
-pip install -e .                  # core only (opencv, pyzmq, numpy, click)
-pip install -e ".[realsense]"     # + pyrealsense2
-pip install -e ".[oak]"           # + depthai
-pip install -e ".[all]"           # everything
+pip install pycaas                # core only (opencv, pyzmq, numpy, click)
+pip install "pycaas[realsense]"   # + pyrealsense2
+pip install "pycaas[oak]"         # + depthai
+pip install "pycaas[all]"         # everything
 ```
+
+pycaas uses OpenCV's contrib build (`opencv-contrib-python`), as aprilcube does, so both
+install together. Do not add `opencv-python` to the same environment: both wheels provide
+`cv2`. For development, `pip install -e ".[all]"`.
 
 ## CLI
 
