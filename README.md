@@ -54,6 +54,20 @@ aiocamera.start(camera_configs={           # explicit configs, no prompts or pro
 aiocamera.stop()                           # stop the daemon
 ```
 
+A camera's config, in a profile or `camera_configs`, may also choose its streams and
+whether it opens at all. A config keyed by a camera type (`realsense`, `oak`, `webcam`)
+applies to every camera of that type without one of its own:
+
+```python
+aiocamera.start(camera_configs={
+    "rs_234322071225": {"resolution": [640, 480], "fps": 60, "streams": ["color"]},  # no depth
+    "webcam": {"enabled": False},                                                   # no webcams
+})
+```
+
+A RealSense opens color and depth by default, and aligns depth to color when both run.
+`aiocamera start --fresh` asks for both and saves them in the profile.
+
 ### Client
 
 ```python

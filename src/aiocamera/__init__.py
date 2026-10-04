@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 import numpy as np
 
@@ -218,8 +218,10 @@ def _build_camera_configs(
                     res = cfg.get("resolution", [0, 0])
                     exp = cfg.get("exposure")
                     exp_label = "auto" if exp is None else exp
-                    print(f"  [{cam.id}] {cam.name}: {res[0]}x{res[1]} @ {cfg.get('fps', '?')}fps, exposure={exp_label}")
+                    print(f"  [{cam.id}] {cam.name}: {res[0]}x{res[1]} @ {cfg.get('fps', '?')}fps, exposure={exp_label}"
+                          + (f", streams={'+'.join(cfg['streams'])}" if "streams" in cfg else ""))
                     camera_configs[cam.id] = cfg
+            camera_configs.update(_type_configs(p))
             return camera_configs
 
         if not fresh and camera_serials:
@@ -234,8 +236,10 @@ def _build_camera_configs(
                         res = cfg.get("resolution", [0, 0])
                         exp = cfg.get("exposure")
                         exp_label = "auto" if exp is None else exp
-                        print(f"  [{cam.id}] {cam.name}: {res[0]}x{res[1]} @ {cfg.get('fps', '?')}fps, exposure={exp_label}")
+                        print(f"  [{cam.id}] {cam.name}: {res[0]}x{res[1]} @ {cfg.get('fps', '?')}fps, exposure={exp_label}"
+                              + (f", streams={'+'.join(cfg['streams'])}" if "streams" in cfg else ""))
                         camera_configs[cam.id] = cfg
+                camera_configs.update(_type_configs(p))
 
                 # Show if other profiles exist for this camera set
                 all_matches = _list_matching_profiles(profiles, camera_serials)
@@ -315,9 +319,15 @@ def _build_camera_configs(
                             pass
                         print(f"  Please enter a value between {exp_range['min']} and {exp_range['max']}")
 
+            streams_choice = input(
+                "  Streams: color and depth, or color only [both/color] (default both): "
+            ).strip().lower()
+
             cfg: dict = {"resolution": list(chosen_wh), "fps": chosen_fps}
             if chosen_exposure is not None:
                 cfg["exposure"] = chosen_exposure
+            if streams_choice == "color":
+                cfg["streams"] = ["color"]
 
             camera_configs[cam.id] = cfg
             configs_by_serial[cam.serial] = cfg
@@ -325,6 +335,11 @@ def _build_camera_configs(
             exp_label = "auto" if chosen_exposure is None else chosen_exposure
             print(f"  -> {chosen_wh[0]}x{chosen_wh[1]} @ {chosen_fps}fps, exposure={exp_label}")
             print()
+
+        if configs_by_serial:
+            webcams = input("Also open webcams? [Y/n]: ").strip().lower()
+            if webcams in ("n", "no"):
+                camera_configs["webcam"] = configs_by_serial["webcam"] = {"enabled": False}
 
         # --- Offer to save as a profile ---
         if configs_by_serial:
@@ -353,6 +368,14 @@ def _build_camera_configs(
         pass  # Fall back to driver defaults if discovery fails
 
     return camera_configs
+
+
+def _type_configs(profile: dict) -> dict[str, dict]:
+    """A profile's configs for camera types rather than serials, e.g. {"webcam": {"enabled": False}}."""
+    configs = {key: cfg for key, cfg in profile["configs"].items() if key not in profile.get("cameras", [])}
+    for key, cfg in configs.items():
+        print(f"  [{key}] " + ("not opened" if not cfg.get("enabled", True) else str(cfg)))
+    return configs
 
 
 __all__ = [

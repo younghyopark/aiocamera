@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aiocamera"
-version = "0.1.0"
+version = "0.1.1"
 description = "Camera as a service — discover, capture, and serve camera frames over ZMQ"
 readme = "README.md"
 license = "MIT"

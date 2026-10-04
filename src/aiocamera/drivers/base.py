@@ -54,7 +54,7 @@ class CameraInfo:
     name: str  # human-readable name
     serial: str = ""
     device_path: str = ""
-    streams: list[str] = field(default_factory=list)  # populated after open()
+    streams: list[str] = field(default_factory=list)  # requested by the config, or all; set by open()
     resolution: tuple[int, int] | None = None  # (width, height) override
     fps: int | None = None
     exposure: int | None = None  # None = auto exposure

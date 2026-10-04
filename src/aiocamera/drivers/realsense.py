@@ -1,4 +1,4 @@
-"""Intel RealSense driver (color + depth)."""
+"""Intel RealSense driver (color and depth, or the streams its camera config lists)."""
 
 from __future__ import annotations
 
@@ -39,10 +39,13 @@ class RealSenseDriver(CameraDriver):
     def open(self) -> None:
         w, h = self.camera_info.resolution or (DEFAULT_W, DEFAULT_H)
         fps = self.camera_info.fps or DEFAULT_FPS
+        streams = self.camera_info.streams or ["color", "depth"]
         config = rs.config()
         config.enable_device(self.camera_info.serial)
-        config.enable_stream(rs.stream.color, w, h, rs.format.rgb8, fps)
-        config.enable_stream(rs.stream.depth, w, h, rs.format.z16, fps)
+        if "color" in streams:
+            config.enable_stream(rs.stream.color, w, h, rs.format.rgb8, fps)
+        if "depth" in streams:
+            config.enable_stream(rs.stream.depth, w, h, rs.format.z16, fps)
 
         self._pipeline = rs.pipeline()
         self._pipeline.start(config)
@@ -67,19 +70,21 @@ class RealSenseDriver(CameraDriver):
             for _ in range(30):
                 self._pipeline.wait_for_frames()
 
-        self._align = rs.align(rs.stream.color)
-        self.camera_info.streams = ["color", "depth"]
+        # Depth is aligned to color only when both stream.
+        self._align = rs.align(rs.stream.color) if {"color", "depth"} <= set(streams) else None
+        self.camera_info.streams = streams
 
     def read(self) -> dict[str, np.ndarray]:
-        assert self._pipeline is not None and self._align is not None
+        assert self._pipeline is not None
         frames = self._pipeline.wait_for_frames()
-        aligned = self._align.process(frames)
+        if self._align is not None:
+            frames = self._align.process(frames)
 
         result: dict[str, np.ndarray] = {}
-        color_frame = aligned.get_color_frame()
+        color_frame = frames.get_color_frame()
         if color_frame:
             result["color"] = np.asanyarray(color_frame.get_data())
-        depth_frame = aligned.get_depth_frame()
+        depth_frame = frames.get_depth_frame()
         if depth_frame:
             result["depth"] = np.asanyarray(depth_frame.get_data())  # uint16, millimeters
         return result

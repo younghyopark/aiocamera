@@ -208,15 +208,23 @@ class CameraService:
         if not cameras:
             log.warning("No cameras found — service will idle")
 
+        opened = []
         for cam in cameras:
-            if cam.id in self._camera_configs:
-                cfg = self._camera_configs[cam.id]
-                if "resolution" in cfg:
-                    cam.resolution = tuple(cfg["resolution"])
-                if "fps" in cfg:
-                    cam.fps = cfg["fps"]
-                if "exposure" in cfg:
-                    cam.exposure = cfg["exposure"]
+            # A camera's own config, else its type's (e.g. "webcam" for every webcam).
+            cfg = self._camera_configs.get(cam.id) or self._camera_configs.get(cam.type, {})
+            if not cfg.get("enabled", True):
+                log.info("Not opening %s (%s): disabled by its config", cam.id, cam.name)
+                continue
+            if "resolution" in cfg:
+                cam.resolution = tuple(cfg["resolution"])
+            if "fps" in cfg:
+                cam.fps = cfg["fps"]
+            if "exposure" in cfg:
+                cam.exposure = cfg["exposure"]
+            if "streams" in cfg:
+                cam.streams = list(cfg["streams"])
+            opened.append(cam)
+        cameras = opened
 
         # Populate metadata for ZMQ status responses
         self._zmq.camera_meta = [
