@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import glob
+import json
 import logging
 import os
+import subprocess
+import sys
+import time
+from typing import TYPE_CHECKING
 
 import cv2
 
 from aiocamera.drivers.base import CameraInfo
+
+if TYPE_CHECKING:
+    import pyrealsense2 as rs
 
 log = logging.getLogger(__name__)
 
@@ -119,15 +127,21 @@ def query_realsense_exposure_range(serial: str, sensor_name: str = "RGB Camera")
 
     ctx = rs.context()
     for dev in ctx.query_devices():
-        if dev.get_info(rs.camera_info.serial_number) != serial:
+        if dev.get_info(rs.camera_info.serial_number) == serial:
+            return _exposure_range(dev, sensor_name)
+    return None
+
+
+def _exposure_range(dev: rs.device, sensor_name: str = "RGB Camera") -> dict | None:
+    import pyrealsense2 as rs
+
+    for sensor in dev.query_sensors():
+        sname = sensor.get_info(rs.camera_info.name)
+        if sensor_name.lower() not in sname.lower():
             continue
-        for sensor in dev.query_sensors():
-            sname = sensor.get_info(rs.camera_info.name)
-            if sensor_name.lower() not in sname.lower():
-                continue
-            if sensor.supports(rs.option.exposure):
-                r = sensor.get_option_range(rs.option.exposure)
-                return {"min": int(r.min), "max": int(r.max), "step": int(r.step), "default": int(r.default)}
+        if sensor.supports(rs.option.exposure):
+            r = sensor.get_option_range(rs.option.exposure)
+            return {"min": int(r.min), "max": int(r.max), "step": int(r.step), "default": int(r.default)}
     return None
 
 
@@ -144,24 +158,64 @@ def query_realsense_resolutions(serial: str) -> list[tuple[int, int, int]]:
 
     ctx = rs.context()
     for dev in ctx.query_devices():
-        if dev.get_info(rs.camera_info.serial_number) != serial:
-            continue
-
-        color_modes: set[tuple[int, int, int]] = set()
-        depth_modes: set[tuple[int, int, int]] = set()
-
-        for sensor in dev.query_sensors():
-            for profile in sensor.get_stream_profiles():
-                vp = profile.as_video_stream_profile()
-                entry = (vp.width(), vp.height(), vp.fps())
-                if vp.stream_type() == rs.stream.color:
-                    color_modes.add(entry)
-                elif vp.stream_type() == rs.stream.depth:
-                    depth_modes.add(entry)
-
-        valid = sorted(color_modes & depth_modes, key=lambda r: (r[2], r[0] * r[1]), reverse=True)
-        return valid
+        if dev.get_info(rs.camera_info.serial_number) == serial:
+            return _resolutions(dev)
     return []
+
+
+def _resolutions(dev: rs.device) -> list[tuple[int, int, int]]:
+    import pyrealsense2 as rs
+
+    color_modes: set[tuple[int, int, int]] = set()
+    depth_modes: set[tuple[int, int, int]] = set()
+
+    for sensor in dev.query_sensors():
+        for profile in sensor.get_stream_profiles():
+            vp = profile.as_video_stream_profile()
+            entry = (vp.width(), vp.height(), vp.fps())
+            if vp.stream_type() == rs.stream.color:
+                color_modes.add(entry)
+            elif vp.stream_type() == rs.stream.depth:
+                depth_modes.add(entry)
+
+    valid = sorted(color_modes & depth_modes, key=lambda r: (r[2], r[0] * r[1]), reverse=True)
+    return valid
+
+
+def describe_realsense() -> list[dict]:
+    """Each connected RealSense — id, name, serial, modes, exposure range — as `aiocamera start` asks about it.
+
+    When librealsense needs root (macOS), a child process run through sudo describes them.
+    """
+    from aiocamera.daemon import SUDO, needs_root
+
+    if needs_root():
+        cmd = [*SUDO, sys.executable, "-m", "aiocamera.discovery"]
+        for attempt in range(3):
+            if attempt:
+                time.sleep(2)  # macOS re-enumerates a RealSense just released (say, by a stopped daemon)
+            child = subprocess.run(cmd, capture_output=True, text=True)
+            if child.returncode == 0:
+                return json.loads(child.stdout)
+        raise RuntimeError(child.stderr.strip().splitlines()[-1] if child.stderr.strip() else "sudo failed")
+    try:
+        import pyrealsense2 as rs
+    except ImportError:
+        return []
+
+    cameras = []
+    # One context: on macOS, releasing one re-enumerates the device, and another opening it meanwhile fails.
+    ctx = rs.context()
+    for dev in ctx.query_devices():
+        serial = dev.get_info(rs.camera_info.serial_number)
+        cameras.append({
+            "id": f"rs_{serial}",
+            "name": dev.get_info(rs.camera_info.name),
+            "serial": serial,
+            "modes": _resolutions(dev),
+            "exposure": _exposure_range(dev),
+        })
+    return cameras
 
 
 def discover_cameras() -> list[CameraInfo]:
@@ -171,3 +225,7 @@ def discover_cameras() -> list[CameraInfo]:
     cameras.extend(_discover_oak())
     cameras.extend(_discover_webcams())
     return cameras
+
+
+if __name__ == "__main__":
+    print(json.dumps(describe_realsense()))  # for describe_realsense, as root

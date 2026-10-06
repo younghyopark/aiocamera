@@ -8,7 +8,7 @@ A background daemon automatically detects connected cameras (Intel RealSense, Lu
 
 ```bash
 pip install aiocamera                # core only (opencv, pyzmq, numpy, click)
-pip install "aiocamera[realsense]"   # + pyrealsense2
+pip install "aiocamera[realsense]"   # + pyrealsense2 (pyrealsense2-macosx on macOS)
 pip install "aiocamera[oak]"         # + depthai
 pip install "aiocamera[all]"         # everything
 ```
@@ -16,6 +16,18 @@ pip install "aiocamera[all]"         # everything
 aiocamera uses OpenCV's contrib build (`opencv-contrib-python`), as aprilcube does, so both
 install together. Do not add `opencv-python` to the same environment: both wheels provide
 `cv2`. For development, `pip install -e ".[all]"`.
+
+### macOS
+
+Intel publishes no pyrealsense2 wheels for macOS. There the `realsense` extra installs
+[pyrealsense2-macosx](https://github.com/cansik/pyrealsense2-macosx) instead, which builds the
+same `pyrealsense2` module (Apple Silicon, macOS 15+).
+
+librealsense needs root on macOS to open a RealSense. With one connected, `aiocamera start` asks
+for your password through sudo and runs the daemon as root, and only the daemon and the camera
+queries behind the setup prompts: your profiles stay yours, and `aiocamera status`, clients and
+`web-debug` work as you. `aiocamera stop` signals the root daemon through sudo, so it may ask for
+the password again. There is no need to run aiocamera itself with sudo.
 
 ## CLI
 

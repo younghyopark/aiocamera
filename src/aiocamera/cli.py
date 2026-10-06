@@ -96,7 +96,11 @@ def start(fresh: bool, profile_name: str | None) -> None:
     """Start the camera service in the background."""
     import aiocamera
 
-    pid = aiocamera.start(fresh=fresh, profile=profile_name)
+    try:
+        pid = aiocamera.start(fresh=fresh, profile=profile_name)
+    except RuntimeError as e:  # e.g. sudo, for a RealSense on macOS, failed
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
     if pid is None:
         sys.exit(0)
 
@@ -106,7 +110,11 @@ def stop() -> None:
     """Stop the running camera service."""
     import aiocamera
 
-    aiocamera.stop()
+    try:
+        aiocamera.stop()
+    except RuntimeError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
 
 
 @main.command()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 
 import numpy as np
 
@@ -114,14 +114,23 @@ def start(
             If provided, skips interactive prompts entirely.
         profile: Use a specific saved profile by name.
 
+    On macOS, a connected RealSense needs root: sudo asks for your password on
+    the terminal, and the daemon runs as root.
+
     Returns:
         The daemon PID, or None if the service was already running.
     """
-    from aiocamera.daemon import is_service_running, start_daemon
+    import subprocess
+
+    from aiocamera.daemon import SUDO, is_service_running, needs_root, start_daemon
 
     if is_service_running():
         print("aiocamera service is already running.")
         return None
+
+    # Once, up front: the camera queries and the daemon below run through sudo.
+    if needs_root() and subprocess.run([*SUDO, "-v"]).returncode != 0:
+        raise RuntimeError("The RealSense on macOS needs root, and sudo did not authenticate")
 
     if camera_configs is None:
         camera_configs = _build_camera_configs(fresh=fresh, profile_name=profile)
@@ -186,14 +195,10 @@ def _build_camera_configs(
 
     camera_configs: dict[str, dict] = {}
     try:
-        from aiocamera.discovery import (
-            _discover_realsense,
-            query_realsense_exposure_range,
-            query_realsense_resolutions,
-        )
+        from aiocamera.discovery import describe_realsense
 
-        rs_cameras = _discover_realsense()
-        camera_serials = [cam.serial for cam in rs_cameras]
+        rs_cameras = describe_realsense()
+        camera_serials = [cam["serial"] for cam in rs_cameras]
         profiles = _load_profiles()
 
         # --- Try to load a profile ---
@@ -213,14 +218,14 @@ def _build_camera_configs(
                 return {}
             print(f"Using profile '{profile_name}' (saved {p.get('created', 'unknown')})")
             for cam in rs_cameras:
-                cfg = p["configs"].get(cam.serial, {})
+                cfg = p["configs"].get(cam["serial"], {})
                 if cfg:
                     res = cfg.get("resolution", [0, 0])
                     exp = cfg.get("exposure")
                     exp_label = "auto" if exp is None else exp
-                    print(f"  [{cam.id}] {cam.name}: {res[0]}x{res[1]} @ {cfg.get('fps', '?')}fps, exposure={exp_label}"
+                    print(f"  [{cam['id']}] {cam['name']}: {res[0]}x{res[1]} @ {cfg.get('fps', '?')}fps, exposure={exp_label}"
                           + (f", streams={'+'.join(cfg['streams'])}" if "streams" in cfg else ""))
-                    camera_configs[cam.id] = cfg
+                    camera_configs[cam["id"]] = cfg
             camera_configs.update(_type_configs(p))
             return camera_configs
 
@@ -231,14 +236,14 @@ def _build_camera_configs(
                 created = p.get("created", "unknown")
                 print(f"Using profile '{name}' (saved {created})")
                 for cam in rs_cameras:
-                    cfg = p["configs"].get(cam.serial, {})
+                    cfg = p["configs"].get(cam["serial"], {})
                     if cfg:
                         res = cfg.get("resolution", [0, 0])
                         exp = cfg.get("exposure")
                         exp_label = "auto" if exp is None else exp
-                        print(f"  [{cam.id}] {cam.name}: {res[0]}x{res[1]} @ {cfg.get('fps', '?')}fps, exposure={exp_label}"
+                        print(f"  [{cam['id']}] {cam['name']}: {res[0]}x{res[1]} @ {cfg.get('fps', '?')}fps, exposure={exp_label}"
                               + (f", streams={'+'.join(cfg['streams'])}" if "streams" in cfg else ""))
-                        camera_configs[cam.id] = cfg
+                        camera_configs[cam["id"]] = cfg
                 camera_configs.update(_type_configs(p))
 
                 # Show if other profiles exist for this camera set
@@ -251,7 +256,7 @@ def _build_camera_configs(
         configs_by_serial: dict[str, dict] = {}
 
         for cam in rs_cameras:
-            all_res = query_realsense_resolutions(cam.serial)
+            all_res = cam["modes"]
             wh_max_fps: dict[tuple[int, int], int] = {}
             for w, h, fps in all_res:
                 key = (w, h)
@@ -261,7 +266,7 @@ def _build_camera_configs(
             if not options:
                 continue
 
-            print(f"[{cam.id}] {cam.name} (serial: {cam.serial})")
+            print(f"[{cam['id']}] {cam['name']} (serial: {cam['serial']})")
             print("  Available resolutions:")
             for i, ((w, h), max_fps) in enumerate(options, 1):
                 print(f"    {i}) {w}x{h}  (up to {max_fps}fps)")
@@ -299,7 +304,7 @@ def _build_camera_configs(
                 chosen_fps = available_fps[0]
 
             chosen_exposure = None
-            exp_range = query_realsense_exposure_range(cam.serial)
+            exp_range = cam["exposure"]
             if exp_range is not None:
                 choice = input(
                     f"  Exposure: auto or manual ({exp_range['min']}-{exp_range['max']}, "
@@ -329,8 +334,8 @@ def _build_camera_configs(
             if streams_choice == "color":
                 cfg["streams"] = ["color"]
 
-            camera_configs[cam.id] = cfg
-            configs_by_serial[cam.serial] = cfg
+            camera_configs[cam["id"]] = cfg
+            configs_by_serial[cam["serial"]] = cfg
 
             exp_label = "auto" if chosen_exposure is None else chosen_exposure
             print(f"  -> {chosen_wh[0]}x{chosen_wh[1]} @ {chosen_fps}fps, exposure={exp_label}")
@@ -364,8 +369,8 @@ def _build_camera_configs(
                 _save_profiles(profiles)
                 print(f"  Saved as '{name}'")
 
-    except Exception:
-        pass  # Fall back to driver defaults if discovery fails
+    except Exception as e:  # Fall back to driver defaults if discovery fails
+        print(f"Could not set up the cameras' configs ({e}); using driver defaults.")
 
     return camera_configs
 

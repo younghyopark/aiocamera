@@ -13,7 +13,8 @@ import zmq
 
 log = logging.getLogger(__name__)
 
-IPC_ENDPOINT = "ipc:///tmp/aiocamera.sock"
+IPC_PATH = "/tmp/aiocamera.sock"
+IPC_ENDPOINT = f"ipc://{IPC_PATH}"
 
 
 # ── Frame data container ────────────────────────────────────────────────────
