@@ -1,0 +1,95 @@
+# Publishes aiocamera to PyPI when a version tag is pushed. To release, set the version in
+# pyproject.toml and src/aiocamera/__init__.py, commit, then:
+#   git tag v0.1.2 && git push origin v0.1.2
+#
+# The wheel is pure Python (py3-none-any), so one build serves every platform: it is installed on
+# Linux and macOS, where each gets its own pyrealsense2 build, before anything is uploaded.
+# PyPI trusts this workflow to upload (no token): the project's trusted publisher, at
+# https://pypi.org/manage/project/aiocamera/settings/publishing/, names this repository, publish.yml
+# and the environment "pypi".
+name: Publish to PyPI
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:  # by hand, from a branch: build and install, but don't publish
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Check the tag is the package version
+        if: github.ref_type == 'tag'
+        run: |
+          python - <<'EOF'
+          import os, re, sys, tomllib
+
+          tag = os.environ["GITHUB_REF_NAME"]
+          version = tomllib.load(open("pyproject.toml", "rb"))["project"]["version"]
+          dunder = re.search(r'^__version__ = "(.*)"$', open("src/aiocamera/__init__.py").read(), re.M)[1]
+          if tag != f"v{version}" or dunder != version:
+              sys.exit(f"Tag {tag} isn't v + the version: pyproject.toml has {version}, __init__.py {dunder}")
+          EOF
+      - name: Build the sdist and wheel
+        run: |
+          python -m pip install build
+          python -m build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  install:
+    name: Install on ${{ matrix.os }}
+    needs: build
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - name: Install the wheel, with the RealSense extra
+        run: python -m pip install "$(echo dist/*.whl)[realsense]"
+      - name: Import it, and the platform's pyrealsense2
+        run: |
+          python - <<'EOF'
+          import sys
+          from importlib.metadata import version
+
+          import aiocamera
+          import pyrealsense2
+
+          rs = "pyrealsense2-macosx" if sys.platform == "darwin" else "pyrealsense2"
+          print(f"aiocamera {aiocamera.__version__}, {rs} {version(rs)}")
+          EOF
+
+  publish:
+    name: Publish
+    needs: install
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/aiocamera
+    permissions:
+      id-token: write  # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
